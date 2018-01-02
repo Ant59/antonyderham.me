@@ -9,13 +9,10 @@ googleAnalytics = "UA-111367451-1"
     author = "Antony Derham"
     description = "Personal Blog"
     githubUsername = "ant59"
-    accent = "red"
+    accent = "#9C27B0"
     showBorder = true
     backgroundColor = "white"
-    font = "Raleway" # should match the name on Google Fonts!
-    highlight = true
-    highlightStyle = "solarized-dark"
-    highlightLanguages = ["go", "typescipt", "javascript", "java"]
+    font = "Raleway"
 
 [[menu.main]]
     url = "/"
