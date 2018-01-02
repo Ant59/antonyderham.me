@@ -2,7 +2,7 @@ baseURL = "https://antonyderham.me"
 languageCode = "en-gb"
 title = "Antony Derham"
 theme = "minimal"
-disqusShortname = "ant59" # delete this to disable disqus comments
+disqusShortname = "antonyderham" # delete this to disable disqus comments
 googleAnalytics = "UA-111367451-1"
 
 [params]
