@@ -29,3 +29,5 @@ export class FileValueAccessor implements ControlValueAccessor {
 {{</ highlight >}}
 
 Once imported to your NgModule, file inputs will start providing the file object on their `files` attribute to Angular forms and the `valueChanges` items will be the selected file. The selector for the directive `input[type=file]` ensures this directive applies only to file input fields. The `'$event.target.files'` property selector in the change host listener specifies the `files` attribute value should be given when this event is emitted instead of the default.
+
+StackBlitz link to working example: https://stackblitz.com/edit/angular-file-input-value-accessor
