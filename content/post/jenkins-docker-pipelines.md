@@ -8,7 +8,7 @@ tags: [jenkins,docker,angular,pipeline]
 
 For a while, I’ve used Drone CI to build my own projects at home. Drone provides a CI platform that uses Docker at it’s core to provide environments for build steps. This eliminates the need for any dependencies to be installed on the agents that are running the builds and provides a clean-room for each step of the build, and each build after it. For each stage in the pipeline, the platform pulls a Docker image, stands up an instance, binds the workspace, runs the commands in the pipeline definition, then tears down the container and begins the next step.
 
-{{< figure src="/images/jenkins-docker-pipelines/pipeline.png" title="Pipeline Successful Output" >}}
+{{< figure src="pipeline.png" title="Pipeline Successful Output" >}}
 
 At my company however, Jenkins is the CI platform of choice, and I wanted to be able to achieve the same benefits that Drone provides. Fortunately, Jenkins recently added Declarative Pipelines as a feature. This allows for pipelines as code, much like Drone. This means the steps to build a project are checked in as code alongside the project itself. This is a vast improvement over pre-defining the job through a UI. The pipelines-as-code strategy allows for version control, greater portability and the ability to change the build process on the fly as the project requires it. Ideal for verification of pull requests/changesets that need tweaks to the build.
 
