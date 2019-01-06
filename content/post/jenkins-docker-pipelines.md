@@ -18,14 +18,14 @@ The first project to undergo the move to this "pipeline-as-code" strategy is an 
 
 Onto the pipeline itself. I wanted to provide everything that our current build setup provided and more. This meant pulling all dependencies for the project with Yarn, linting the TypeScript, running Jasmine unit tests with Karma, running E2E tests with Protractor, building the application with Angular CLI and wrapping the entire output as an Nginx-based Docker image to be pushed to our artefact repository. Each of these became a stage in the pipeline, most of which are simply invoking a package.json lifecycle script using Yarn.
 
-{{< highlight groovy >}}
+```groovy
 pipeline {
   agent none
   stages {
     // ... build stages here
   }
 }
-{{</ highlight >}}
+```
 
 Jenkins declarative pipelines begin with a root pipeline block. This block contains a stages block, in which all the build stages are defined. It also contains a top level agent declaration. For my pipeline here, each stage has it's own agent defined as later on in the process, I'll need to do some work directly with Docker outside of containers, to package the finished artefact and push to a registry. Therefore, the agent for the overall pipeline is defined as `none` to prevent Jenkins using an executors unecessarily.
 
@@ -33,7 +33,7 @@ Jenkins declarative pipelines begin with a root pipeline block. This block conta
 
 The first stage uses the [Yarn](https://yarnpkg.org) package manager tool to pull all the required Node package dependencies.
 
-{{< highlight groovy >}}
+```groovy
 stage('Fetch dependencies') {
   agent {
     docker 'circleci/node:9.3-stretch-browsers'
@@ -43,7 +43,7 @@ stage('Fetch dependencies') {
     stash includes: 'node_modules/', name: 'node_modules'
   }
 }
-{{</ highlight >}}
+```
 
 Firstly, the agent for this step is defined as a Docker image. As mentioned, I'm using the CircleCI images that include Node, Yarn and browsers. Jenkins will pull the image, launch a container on any slave that has available executors, bind the workspace and then execute the step commands within that container. If I wanted to restrict it to run on certain slaves only, I could define a label in the agent block too.
 
@@ -53,7 +53,7 @@ The steps in this stage are simple. Invoking `yarn` pulls all the packages. The 
 
 The next step is to check the TypeScript using the linter available with Angular CLI. This ensures at least a basic level of readability to the code being submitted.
 
-{{< highlight groovy >}}
+```groovy
 stage('Lint') {
   agent {
     docker 'circleci/node:9.3-stretch-browsers'
@@ -63,7 +63,7 @@ stage('Lint') {
     sh 'yarn lint'
   }
 }
-{{</ highlight >}}
+```
 
 Again, the agent is defined with the same Docker image as before, and again this can run on any available executor on any slave.
 
@@ -73,7 +73,7 @@ The first step here is to unstash the `node_modules` that were saved in the firs
 
 The application I'm building uses the default Angular CLI test runner Karma with Jasmine unit tests.
 
-{{< highlight groovy >}}
+```groovy
 stage('Unit Test') {
   agent {
     docker 'circleci/node:9.3-stretch-browsers'
@@ -84,15 +84,15 @@ stage('Unit Test') {
     junit 'reports/**/*.xml'
   }
 }
-{{</ highlight >}}
+```
 
 This stage is basically the same again. I have `test:ci` defined as a lifecycle script in my `package.json`, so it's as simple as invoking that command with Yarn.
 
-{{<highlight json >}}
+```json
 {
   "test:ci": "ng test --config karma.conf.ci.js --code-coverage --progress=false"
 }
-{{</ highlight >}}
+```
 
 The results are captured with the `junit` command to display test results within Jenkins.
 
@@ -100,7 +100,7 @@ The results are captured with the `junit` command to display test results within
 
 A non-standard approach is taken to E2E testing in this project. I am using Protractor with CucumberJS for behaviour driven development practices.
 
-{{< highlight groovy >}}
+```groovy
 stage('E2E Test') {
   agent {
     docker 'circleci/node:9.3-stretch-browsers'
@@ -114,23 +114,23 @@ stage('E2E Test') {
     junit 'reports/**/*.xml'
   }
 }
-{{</ highlight >}}
+```
 
 The pre-ci step downloads the correct webdriver version for the version of Chromium installed in the Docker image. By default, CucumberJS outputs JSON results. The post-ci step converts this to JUnitXML for Jenkins to display test result information.
 
-{{<highlight json >}}
+```json
 {
   "e2e:pre-ci": "./node_modules/webdriver-manager/bin/webdriver-manager update --versions.chrome=2.34",
   "e2e:ci": "ng e2e --config protractor.conf.ci.js --proxy-config proxy.conf.ci.json --progress=false --webdriver-update false",
   "e2e:post-ci": "cat ./reports/e2e.json | ./node_modules/.bin/cucumber-junit > ./reports/e2e.xml"
 }
-{{</ highlight >}}
+```
 
 ### Build
 
 At last we're at the actual build stage. Once again, the same Docker image is used as the build agent and a Yarn lifecycle script is invoked. Angular CLI produces a production-targetted build of the application.
 
-{{< highlight groovy >}}
+```groovy
 stage('Compile') {
   agent {
     docker 'circleci/node:9.3-stretch-browsers'
@@ -141,7 +141,7 @@ stage('Compile') {
     stash includes: 'dist/', name: 'dist'
   }
 }
-{{</ highlight >}}
+```
 
 The final step in this stage is to stash the output `dist/` directory containing the finished build output.
 
@@ -149,18 +149,18 @@ The final step in this stage is to stash the output `dist/` directory containing
 
 The very last stage is to take the build output and package it as part of a Docker image to push to the registry as a finished artefact. The Dockerfile I've included as part of the project is baesd on the Nginx Alpine image. The resulting image can be deployed anywhere to serve the Angular app.
 
-{{< highlight docker >}}
+```docker
 FROM nginx:1.13.1-alpine
 
 EXPOSE 80
 
 COPY dist /var/www
 COPY config/nginx.conf /etc/nginx/nginx.conf
-{{</ highlight >}}
+```
 
 A simple Nginx config is included which contains rules required for redirecting all URLs to `index.html`, where the built-in Angular Router can take over.
 
-{{< highlight groovy >}}
+```groovy
 stage('Build and Push Docker Image') {
   agent any
   environment {
@@ -173,7 +173,7 @@ stage('Build and Push Docker Image') {
     sh 'docker push $DOCKER_PUSH_URL/frontend'
   }
 }
-{{</ highlight >}}
+```
 
 This time, the steps take place on the bare slave. It is not possible to invoke Docker commands from within a Docker container on Jenkins without priviledge escalation. Therefore the agent here is defined as `any`.
 
@@ -185,7 +185,7 @@ The completed image is then sent to the registry as a finished artefact.
 
 Here is the entire pipeline from start to finish.
 
-{{< highlight groovy "linenos=inline" >}}
+```groovy
 pipeline {
   agent none
   stages {
@@ -254,4 +254,4 @@ pipeline {
     }
   }
 }
-{{< / highlight >}}
+```

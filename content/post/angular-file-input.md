@@ -8,7 +8,7 @@ File inputs are strange. The value attribute on most inputs behaves as expected,
 
 The `ControlValueAccessor` is just an interface for a directive. You can create a new directive for accessing the file on a file input field and provide it with the `NG_VALUE_ACCESSOR` token.
 
-{{< highlight typescript >}}
+```typescript
 import { Directive, HostListener } from '@angular/core';
 import { NG_VALUE_ACCESSOR, ControlValueAccessor } from '@angular/forms';
 
@@ -26,7 +26,7 @@ export class FileValueAccessor implements ControlValueAccessor {
   registerOnChange(fn: (_: any) => void) { this.onChange = fn; }
   registerOnTouched(fn: () => void) { this.onTouched = fn; }
 }
-{{</ highlight >}}
+```
 
 Once imported to your NgModule, file inputs will start providing the file object on their `files` attribute to Angular forms and the `valueChanges` items will be the selected file. The selector for the directive `input[type=file]` ensures this directive applies only to file input fields. The `'$event.target.files'` property selector in the change host listener specifies the `files` attribute value should be given when this event is emitted instead of the default.
 

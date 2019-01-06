@@ -10,18 +10,18 @@ To mix the two concepts together requires a bit of RxJS `flatMap`, since the int
 
 Firstly, create the new interceptor.
 
-{{< highlight typescript >}}
+```typescript
 @Injectable()
 export class TokenInterceptor implements HttpInterceptor {
   intercept(req: HttpRequest<any>, next: HttpHandler) {
 
   }
 }
-{{</ highlight >}}
+```
 
 Next, inject the NgRx Store for access to the token selector through the constructor parameters via dependency injection. I'll assume you have an existing token selector.
 
-{{< highlight typescript >}}
+```typescript
 @Injectable()
 export class TokenInterceptor implements HttpInterceptor {
   constructor(private store: Store<fromAuth.State>) {}
@@ -30,11 +30,11 @@ export class TokenInterceptor implements HttpInterceptor {
 
   }
 }
-{{</ highlight >}}
+```
 
 The observable that we return from the intercept method begins with the store selector. Since this observable will form part of the chain when creating a new HttpClient request and subscribing, we don't want to send an update everytime the token changes in the future, else the services using HttpClient will appear to get a new value from their request if not unsubscribed. Thus we use the `first()` operator here to only take the first value, then complete.
 
-{{< highlight typescript >}}
+```typescript
 @Injectable()
 export class TokenInterceptor implements HttpInterceptor {
   constructor(private store: Store<fromAuth.State>) {}
@@ -46,11 +46,11 @@ export class TokenInterceptor implements HttpInterceptor {
     );
   }
 }
-{{</ highlight >}}
+```
 
 Finally, the logic itself via the `flatMap` operator, which will take our token value from the selector observable and allow us to return a new observable, which is provided by the HttpHandler, using a clone of the request as a parameter. This clone has the `Authorization` header set with our token as the value. Here I'm using a JWT and therefore prefix with `Bearer`.
 
-{{< highlight typescript >}}
+```typescript
 @Injectable()
 export class TokenInterceptor implements HttpInterceptor {
   constructor(private store: Store<fromAuth.State>) {}
@@ -67,12 +67,12 @@ export class TokenInterceptor implements HttpInterceptor {
     );
   }
 }
-{{</ highlight >}}
+```
 
 With the interceptor complete, the final thing to do is provide the interceptor to the `HTTP_INTERCEPTORS` InjectionToken where we want to inject it, such as the NgModule or service that we want to add our token to requests for.
 
-{{< highlight typescript >}}
+```typescript
 providers: [
   {provide: HTTP_INTERCEPTORS, useClass: TokenInterceptor, multi: true},
 ],
-{{</ highlight >}}
+```

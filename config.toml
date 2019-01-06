@@ -4,6 +4,7 @@ title = "Antony Derham"
 theme = "minimal"
 disqusShortname = "antonyderham" # delete this to disable disqus comments
 googleAnalytics = "UA-111367451-1"
+pygmentsCodeFences = true
 
 [params]
     author = "Antony Derham"
