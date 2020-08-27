@@ -1,0 +1,155 @@
+<!doctype html><html lang=en-gb><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Declarative Jenkins Docker Pipeline for Angular CLI applications</title><style>html body{font-family:raleway,sans-serif;background-color:#fff}:root{--accent: #9C27B0;--border-width:  5px }</style><link rel=stylesheet href=https://antonyderham.me/css/main.css><link rel=stylesheet href=/css/figures.css><link rel=stylesheet href="https://fonts.googleapis.com/css?family=Raleway"><link rel=stylesheet href=https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css integrity=sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u crossorigin=anonymous><link rel=stylesheet href=https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css integrity=sha384-wvfXpqpZZVQGK6TAh5PVlGOfQNHSoD2xbE+QkPxCAFlNEevoEH3Sl0sibVcOQVnN crossorigin=anonymous><script src=https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js></script><script src=https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js integrity=sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa crossorigin=anonymous></script><script>$(document).on('click',function(){$('.collapse').collapse('hide');})</script><meta name=generator content="Hugo 0.74.2"><script async src="https://www.googletagmanager.com/gtag/js?id=UA-111367451-1"></script><script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)};gtag('js',new Date());gtag('config','UA-111367451-1');</script></head><body><nav class="navbar navbar-default navbar-fixed-top"><div class=container><div class=navbar-header><a class="navbar-brand visible-xs" href=#>Declarative Jenkins Docker Pipeline for Angular CLI applications</a>
+<button class=navbar-toggle data-target=.navbar-collapse data-toggle=collapse>
+<span class=icon-bar></span><span class=icon-bar></span><span class=icon-bar></span></button></div><div class="collapse navbar-collapse"><ul class="nav navbar-nav"><li><a href=/>Home</a></li><li><a href=/post/>Posts</a></li><li><a href=/project/>Projects</a></li></ul><ul class="nav navbar-nav navbar-right"><li class=navbar-icon><a href=mailto:antony@derham.me><i class="fa fa-envelope-o"></i></a></li><li class=navbar-icon><a href=https://github.com/ant59/><i class="fa fa-github"></i></a></li><li class=navbar-icon><a href=https://twitter.com/antonyderham/><i class="fa fa-twitter"></i></a></li><li class=navbar-icon><a href=https://www.linkedin.com/in/antonyderham/><i class="fa fa-linkedin"></i></a></li></ul></div></div></nav><main><div class=item><h4><a href=/post/jenkins-docker-pipelines/>Declarative Jenkins Docker Pipeline for Angular CLI applications</a></h4><h5>January 1, 2018</h5><kbd class=item-tag>jenkins</kbd> <kbd class=item-tag>docker</kbd> <kbd class=item-tag>angular</kbd> <kbd class=item-tag>pipeline</kbd></div><br><div class=text-justify><h2 id=purpose>Purpose</h2><p>For a while, I’ve used Drone CI to build my own projects at home. Drone provides a CI platform that uses Docker at it’s core to provide environments for build steps. This eliminates the need for any dependencies to be installed on the agents that are running the builds and provides a clean-room for each step of the build, and each build after it. For each stage in the pipeline, the platform pulls a Docker image, stands up an instance, binds the workspace, runs the commands in the pipeline definition, then tears down the container and begins the next step.</p><figure><img src=pipeline.png><figcaption><h4>Pipeline Successful Output</h4></figcaption></figure><p>At my company however, Jenkins is the CI platform of choice, and I wanted to be able to achieve the same benefits that Drone provides. Fortunately, Jenkins recently added Declarative Pipelines as a feature. This allows for pipelines as code, much like Drone. This means the steps to build a project are checked in as code alongside the project itself. This is a vast improvement over pre-defining the job through a UI. The pipelines-as-code strategy allows for version control, greater portability and the ability to change the build process on the fly as the project requires it. Ideal for verification of pull requests/changesets that need tweaks to the build.</p><p>The first project to undergo the move to this &ldquo;pipeline-as-code&rdquo; strategy is an Angular CLI application. This requires Node for build tools, Yarn for dependency management, and Java and Chromium for testing. My first attempt was to create a Dockerfile based on the official Node image (which already contains Node and Yarn), to install the other dependencies and use the resultant image as the build agent for each stage. Turns out that CircleCI provides Node images on Docker Hub with browsers pre-installed, giving me everything I needed without having to create my own image.</p><h2 id=pipeline>Pipeline</h2><p>Onto the pipeline itself. I wanted to provide everything that our current build setup provided and more. This meant pulling all dependencies for the project with Yarn, linting the TypeScript, running Jasmine unit tests with Karma, running E2E tests with Protractor, building the application with Angular CLI and wrapping the entire output as an Nginx-based Docker image to be pushed to our artefact repository. Each of these became a stage in the pipeline, most of which are simply invoking a package.json lifecycle script using Yarn.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>pipeline <span style=color:#f92672>{</span>
+  agent none
+  stages <span style=color:#f92672>{</span>
+    <span style=color:#75715e>// ... build stages here
+</span><span style=color:#75715e></span>  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>Jenkins declarative pipelines begin with a root pipeline block. This block contains a stages block, in which all the build stages are defined. It also contains a top level agent declaration. For my pipeline here, each stage has it&rsquo;s own agent defined as later on in the process, I&rsquo;ll need to do some work directly with Docker outside of containers, to package the finished artefact and push to a registry. Therefore, the agent for the overall pipeline is defined as <code>none</code> to prevent Jenkins using an executors unecessarily.</p><h3 id=fetch-dependencies>Fetch Dependencies</h3><p>The first stage uses the <a href=https://yarnpkg.org>Yarn</a> package manager tool to pull all the required Node package dependencies.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Fetch dependencies&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent <span style=color:#f92672>{</span>
+    docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    sh <span style=color:#e6db74>&#39;yarn&#39;</span>
+    stash includes: <span style=color:#e6db74>&#39;node_modules/&#39;</span><span style=color:#f92672>,</span> name: <span style=color:#e6db74>&#39;node_modules&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>Firstly, the agent for this step is defined as a Docker image. As mentioned, I&rsquo;m using the CircleCI images that include Node, Yarn and browsers. Jenkins will pull the image, launch a container on any slave that has available executors, bind the workspace and then execute the step commands within that container. If I wanted to restrict it to run on certain slaves only, I could define a label in the agent block too.</p><p>The steps in this stage are simple. Invoking <code>yarn</code> pulls all the packages. The stash step is used to allow later stages to run on other slaves and still have access to the packages from this stage. It took me more hours than I want to admit to discover stash as the solution to my workspace sharing problems. I originally had the pipeline restricted to run on a single slave only. Now that I can stash and unstash, I&rsquo;ve been able to parallelise the testing steps for even faster build times.</p><h3 id=lint>Lint</h3><p>The next step is to check the TypeScript using the linter available with Angular CLI. This ensures at least a basic level of readability to the code being submitted.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Lint&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent <span style=color:#f92672>{</span>
+    docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn lint&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>Again, the agent is defined with the same Docker image as before, and again this can run on any available executor on any slave.</p><p>The first step here is to unstash the <code>node_modules</code> that were saved in the first stage. This allows this stage to be run anywhere without the concern of not having dependencies downloaded to the workspace on any particular slave.</p><h3 id=unit-testing>Unit testing</h3><p>The application I&rsquo;m building uses the default Angular CLI test runner Karma with Jasmine unit tests.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Unit Test&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent <span style=color:#f92672>{</span>
+    docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn test:ci&#39;</span>
+    junit <span style=color:#e6db74>&#39;reports/**/*.xml&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>This stage is basically the same again. I have <code>test:ci</code> defined as a lifecycle script in my <code>package.json</code>, so it&rsquo;s as simple as invoking that command with Yarn.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-json data-lang=json>{
+  <span style=color:#f92672>&#34;test:ci&#34;</span>: <span style=color:#e6db74>&#34;ng test --config karma.conf.ci.js --code-coverage --progress=false&#34;</span>
+}
+</code></pre></div><p>The results are captured with the <code>junit</code> command to display test results within Jenkins.</p><h3 id=e2e-testing>E2E testing</h3><p>A non-standard approach is taken to E2E testing in this project. I am using Protractor with CucumberJS for behaviour driven development practices.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;E2E Test&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent <span style=color:#f92672>{</span>
+    docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+    sh <span style=color:#e6db74>&#39;mkdir -p reports&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn e2e:pre-ci&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn e2e:ci&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn e2e:post-ci&#39;</span>
+    junit <span style=color:#e6db74>&#39;reports/**/*.xml&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>The pre-ci step downloads the correct webdriver version for the version of Chromium installed in the Docker image. By default, CucumberJS outputs JSON results. The post-ci step converts this to JUnitXML for Jenkins to display test result information.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-json data-lang=json>{
+  <span style=color:#f92672>&#34;e2e:pre-ci&#34;</span>: <span style=color:#e6db74>&#34;./node_modules/webdriver-manager/bin/webdriver-manager update --versions.chrome=2.34&#34;</span>,
+  <span style=color:#f92672>&#34;e2e:ci&#34;</span>: <span style=color:#e6db74>&#34;ng e2e --config protractor.conf.ci.js --proxy-config proxy.conf.ci.json --progress=false --webdriver-update false&#34;</span>,
+  <span style=color:#f92672>&#34;e2e:post-ci&#34;</span>: <span style=color:#e6db74>&#34;cat ./reports/e2e.json | ./node_modules/.bin/cucumber-junit &gt; ./reports/e2e.xml&#34;</span>
+}
+</code></pre></div><h3 id=build>Build</h3><p>At last we&rsquo;re at the actual build stage. Once again, the same Docker image is used as the build agent and a Yarn lifecycle script is invoked. Angular CLI produces a production-targetted build of the application.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Compile&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent <span style=color:#f92672>{</span>
+    docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+    sh <span style=color:#e6db74>&#39;yarn build:prod&#39;</span>
+    stash includes: <span style=color:#e6db74>&#39;dist/&#39;</span><span style=color:#f92672>,</span> name: <span style=color:#e6db74>&#39;dist&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>The final step in this stage is to stash the output <code>dist/</code> directory containing the finished build output.</p><h3 id=docker>Docker</h3><p>The very last stage is to take the build output and package it as part of a Docker image to push to the registry as a finished artefact. The Dockerfile I&rsquo;ve included as part of the project is baesd on the Nginx Alpine image. The resulting image can be deployed anywhere to serve the Angular app.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-docker data-lang=docker><span style=color:#66d9ef>FROM</span><span style=color:#e6db74> nginx:1.13.1-alpine</span><span style=color:#960050;background-color:#1e0010>
+</span><span style=color:#960050;background-color:#1e0010>
+</span><span style=color:#960050;background-color:#1e0010></span><span style=color:#66d9ef>EXPOSE</span><span style=color:#e6db74> 80</span><span style=color:#960050;background-color:#1e0010>
+</span><span style=color:#960050;background-color:#1e0010>
+</span><span style=color:#960050;background-color:#1e0010></span><span style=color:#66d9ef>COPY</span> dist /var/www<span style=color:#960050;background-color:#1e0010>
+</span><span style=color:#960050;background-color:#1e0010></span><span style=color:#66d9ef>COPY</span> config/nginx.conf /etc/nginx/nginx.conf<span style=color:#960050;background-color:#1e0010>
+</span></code></pre></div><p>A simple Nginx config is included which contains rules required for redirecting all URLs to <code>index.html</code>, where the built-in Angular Router can take over.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Build and Push Docker Image&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+  agent any
+  environment <span style=color:#f92672>{</span>
+    DOCKER_PUSH <span style=color:#f92672>=</span> credentials<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;docker_push&#39;</span><span style=color:#f92672>)</span>
+  <span style=color:#f92672>}</span>
+  steps <span style=color:#f92672>{</span>
+    unstash <span style=color:#e6db74>&#39;dist&#39;</span>
+    sh <span style=color:#e6db74>&#39;docker build -t $DOCKER_PUSH_URL/frontend .&#39;</span>
+    sh <span style=color:#e6db74>&#39;docker login -u $DOCKER_PUSH_USR -p $DOCKER_PUSH_PSW $DOCKER_PUSH_URL&#39;</span>
+    sh <span style=color:#e6db74>&#39;docker push $DOCKER_PUSH_URL/frontend&#39;</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div><p>This time, the steps take place on the bare slave. It is not possible to invoke Docker commands from within a Docker container on Jenkins without priviledge escalation. Therefore the agent here is defined as <code>any</code>.</p><p>First, the build output is unstashed. Then the Docker image is built from the Dockerfile. I&rsquo;m making use of the <code>$DOCKER_PUSH_URL</code> variable which I have defined in the job itself. Next, the pipeline logs into the registry. In the <code>environment</code> block, I have used the <code>credentials</code> built-in function to define the variables of <code>$DOCKER_PUSH_USR</code> and <code>$DOCKER_PUSH_PSW</code>.</p><p>The completed image is then sent to the registry as a finished artefact.</p><h2 id=putting-it-all-together>Putting it all together</h2><p>Here is the entire pipeline from start to finish.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-groovy data-lang=groovy>pipeline <span style=color:#f92672>{</span>
+  agent none
+  stages <span style=color:#f92672>{</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Fetch dependencies&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent <span style=color:#f92672>{</span>
+        docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        sh <span style=color:#e6db74>&#39;yarn&#39;</span>
+        stash includes: <span style=color:#e6db74>&#39;node_modules/&#39;</span><span style=color:#f92672>,</span> name: <span style=color:#e6db74>&#39;node_modules&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Lint&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent <span style=color:#f92672>{</span>
+        docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn lint&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Unit Test&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent <span style=color:#f92672>{</span>
+        docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn test:ci&#39;</span>
+        junit <span style=color:#e6db74>&#39;reports/**/*.xml&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;E2E Test&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent <span style=color:#f92672>{</span>
+        docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+        sh <span style=color:#e6db74>&#39;mkdir -p reports&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn e2e:pre-ci&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn e2e:ci&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn e2e:post-ci&#39;</span>
+        junit <span style=color:#e6db74>&#39;reports/**/*.xml&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Compile&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent <span style=color:#f92672>{</span>
+        docker <span style=color:#e6db74>&#39;circleci/node:9.3-stretch-browsers&#39;</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        unstash <span style=color:#e6db74>&#39;node_modules&#39;</span>
+        sh <span style=color:#e6db74>&#39;yarn build:prod&#39;</span>
+        stash includes: <span style=color:#e6db74>&#39;dist/&#39;</span><span style=color:#f92672>,</span> name: <span style=color:#e6db74>&#39;dist&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+    stage<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;Build and Push Docker Image&#39;</span><span style=color:#f92672>)</span> <span style=color:#f92672>{</span>
+      agent any
+      environment <span style=color:#f92672>{</span>
+        DOCKER_PUSH <span style=color:#f92672>=</span> credentials<span style=color:#f92672>(</span><span style=color:#e6db74>&#39;docker_push&#39;</span><span style=color:#f92672>)</span>
+      <span style=color:#f92672>}</span>
+      steps <span style=color:#f92672>{</span>
+        unstash <span style=color:#e6db74>&#39;dist&#39;</span>
+        sh <span style=color:#e6db74>&#39;docker build -t $DOCKER_PUSH_URL/frontend .&#39;</span>
+        sh <span style=color:#e6db74>&#39;docker login -u $DOCKER_PUSH_USR -p $DOCKER_PUSH_PSW $DOCKER_PUSH_URL&#39;</span>
+        sh <span style=color:#e6db74>&#39;docker push $DOCKER_PUSH_URL/frontend&#39;</span>
+      <span style=color:#f92672>}</span>
+    <span style=color:#f92672>}</span>
+  <span style=color:#f92672>}</span>
+<span style=color:#f92672>}</span>
+</code></pre></div></div><h4 class=page-header>Related</h4><div class=item><h4><a href=/post/angular-ngrx-auth-interceptor/>Using NgRx Store Auth Token with Angular HttpInterceptor</a></h4><h5>June 4, 2018</h5><kbd class=item-tag>angular</kbd> <kbd class=item-tag>ngrx</kbd> <kbd class=item-tag>store</kbd> <kbd class=item-tag>auth</kbd> <kbd class=item-tag>jwt</kbd> <kbd class=item-tag>http</kbd> <kbd class=item-tag>httpclient</kbd> <kbd class=item-tag>interceptor</kbd> <kbd class=item-tag>httpinterceptor</kbd></div><div class=item><h4><a href=/post/angular-file-input/>Dealing with file inputs in Angular 6</a></h4><h5>June 1, 2018</h5><kbd class=item-tag>angular</kbd> <kbd class=item-tag>form</kbd> <kbd class=item-tag>input</kbd> <kbd class=item-tag>file</kbd> <kbd class=item-tag>directive</kbd> <kbd class=item-tag>control</kbd> <kbd class=item-tag>accessor</kbd> <kbd class=item-tag>upload</kbd></div><h4 class=page-header>Comments</h4><div id=disqus_thread></div><script type=application/javascript>var disqus_config=function(){};(function(){if(["localhost","127.0.0.1"].indexOf(window.location.hostname)!=-1){document.getElementById('disqus_thread').innerHTML='Disqus comments not available by default when the website is previewed locally.';return;}
+var d=document,s=d.createElement('script');s.async=true;s.src='//'+"antonyderham"+'.disqus.com/embed.js';s.setAttribute('data-timestamp',+new Date());(d.head||d.body).appendChild(s);})();</script><noscript>Please enable JavaScript to view the <a href=https://disqus.com/?ref_noscript>comments powered by Disqus.</a></noscript><a href=https://disqus.com class=dsq-brlink>comments powered by <span class=logo-disqus>Disqus</span></a></main><footer><p class="copyright text-muted">© All rights reserved. Powered by <a href=https://gohugo.io>Hugo</a> and <a href=https://github.com/calintat/minimal>Minimal</a></p></footer></body></html>
